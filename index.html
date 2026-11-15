@@ -160,8 +160,10 @@ pre{margin:0;font-family:var(--f-code);font-size:12.5px;line-height:1.55;color:v
       </div>
     </div>
     <div class="col">
-      <div class="box"><span class="lbl">Partition</span><canvas id="roll" width="600" height="260" aria-label="Partition éditable"></canvas>
-        <p class="how">Glisse une note pour la décaler (temps et hauteur), tire son bord droit pour la rallonger. Double-clic : ajouter une note (piste sélectionnée) ou en supprimer une. Note sélectionnée : <span class="kbd">←</span><span class="kbd">→</span> décaler, <span class="kbd">↑</span><span class="kbd">↓</span> demi-ton, <span class="kbd">Maj</span>+<span class="kbd">←</span><span class="kbd">→</span> durée, <span class="kbd">Suppr</span> effacer. Le pas suit le « Calage ».</p></div>
+      <div class="box"><span class="lbl">Partition</span>
+        <div class="bar" id="rangeBar" hidden><span class="ctl" id="rangeTxt"></span><button class="btn ghost" id="bRDel" title="Suppr">Effacer les notes</button><button class="btn" id="bRCut" title="Maj+Suppr">Couper le passage</button><button class="ico" id="bRX" title="Annuler la sélection (Échap)" aria-label="Annuler la sélection">✕</button></div>
+        <canvas id="roll" width="600" height="260" aria-label="Partition éditable"></canvas>
+        <p class="how">Glisse sur une zone vide pour sélectionner un passage : <span class="kbd">Suppr</span> efface ses notes en gardant le temps, <span class="kbd">Maj</span>+<span class="kbd">Suppr</span> le coupe et fait reculer la suite. Glisse une note pour la décaler (temps et hauteur), tire son bord droit pour la rallonger. Double-clic : ajouter une note (piste sélectionnée) ou en supprimer une. Note sélectionnée : <span class="kbd">←</span><span class="kbd">→</span> décaler, <span class="kbd">↑</span><span class="kbd">↓</span> demi-ton, <span class="kbd">Maj</span>+<span class="kbd">←</span><span class="kbd">→</span> durée, <span class="kbd">Suppr</span> effacer. Le pas suit le « Calage ».</p></div>
       <div class="box">
         <div class="bar" style="justify-content:space-between">
           <div class="tabs" id="tabs"><button class="on" data-t="music">Musique</button><button data-t="sfx">Bruitage</button><button data-t="engine">Moteur</button></div>
@@ -435,6 +437,8 @@ const downCodes={};
 document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.code==='KeyZ'&&!typing()){ e.preventDefault(); undo(); return; }
   if(typing()||e.metaKey||e.ctrlKey||e.altKey) return;
+  if(RANGE&&(e.code==='Delete'||e.code==='Backspace')){ e.preventDefault(); rangeEdit(e.shiftKey); return; }
+  if(RANGE&&e.code==='Escape'){ RANGE=null; showRange(); return; }
   if(SELN&&!DRAG&&document.activeElement.type!=='range'){ const A={ArrowLeft:-1,ArrowRight:1};
     if(e.code in A){ e.preventDefault(); e.shiftKey?nudge(0,0,A[e.code]):nudge(A[e.code],0,0); return; }
     if(e.code==='ArrowUp'||e.code==='ArrowDown'){ e.preventDefault(); nudge(0,e.code==='ArrowUp'?1:-1,0); return; }
@@ -539,7 +543,7 @@ $('bClrDr').onclick=()=>{ Object.values(S.drums.rows).forEach(r=>r.on=[]); rende
 
 /* =========== partition (éditable) =========== */
 const RV={lo:48,hi:72,maxL:8,W:600,H:260,drumH:0,mh:10,hits:[],frozen:false};
-let SELN=null, DRAG=null;
+let SELN=null, DRAG=null, RANGE=null, RDRAG=null;
 const isPerc=t=>PERC.includes(t);
 function rollGeom(){ RV.W=$('roll').clientWidth||600;
   if(!RV.frozen){ const parts=COMP||[]; RV.maxL=Math.max(8,...parts.map(p=>p.L)); RV.drumH=parts.some(p=>isPerc(p.type))?40:0;
@@ -576,6 +580,7 @@ function drawRoll(){
       if(!k&&p.src==='part'){ RV.hits.push({pi:p.idx,s:e.s,n:e.n,x,y,w,h,sel});
         if(SELN&&SELN.pi===p.idx&&Math.abs(SELN.s-e.s)<1e-6&&SELN.n===e.n){ g.globalAlpha=1; g.strokeStyle='#f7ecd6'; g.lineWidth=2; g.strokeRect(x-1,y-1,w+2,h+2); g.lineWidth=1; } } }); });
   g.globalAlpha=1;
+  if(RANGE){ const xa=rX(RANGE.a), xb=rX(RANGE.b); g.fillStyle='rgba(227,180,76,.2)'; g.fillRect(xa,0,xb-xa,H-12); g.fillStyle='#e3b44c'; g.fillRect(xa,0,2,H-12); g.fillRect(xb-2,0,2,H-12); }
   if(PB.on&&AC.ctx){ const u=(AC.ctx.currentTime-PB.t0)/E(); if(u>=0){ const x=rX(u%maxL); g.fillStyle='#f7ecd6'; g.fillRect(x,0,2,H-12); }
     const step=Math.floor(((u%(S.drums.steps*.5))+S.drums.steps*.5)%(S.drums.steps*.5)/.5);
     document.querySelectorAll('.st.now').forEach(b=>b.classList.remove('now')); if(u>=0) document.querySelectorAll(`.st[data-k="${step}"]`).forEach(b=>b.classList.add('now')); }
@@ -586,15 +591,17 @@ function hitNote(x,y){ let best=null; for(const h of RV.hits) if(x>=h.x-2&&x<=h.
 const roll=$('roll'), rpos=e=>{ const r=roll.getBoundingClientRect(); return {x:e.clientX-r.left,y:e.clientY-r.top}; };
 const onEdge=(h,x)=>h.w>10&&x>h.x+h.w-6;
 roll.addEventListener('pointerdown',e=>{ const {x,y}=rpos(e), h=hitNote(x,y);
-  if(!h){ SELN=null; return; }
-  e.preventDefault(); try{ roll.setPointerCapture(e.pointerId); }catch(_){}
+  if(!h){ SELN=null; const q=+$('quant').value, u=Math.max(0,Math.min(RV.maxL,Math.round(rU(x)/q)*q));
+    RDRAG={u0:u}; RANGE={a:u,b:u}; RV.frozen=true; try{ roll.setPointerCapture(e.pointerId); }catch(_){} showRange(); return; }
+  e.preventDefault(); try{ roll.setPointerCapture(e.pointerId); }catch(_){} RANGE=null; showRange();
   const p=S.parts[h.pi], {ev,L}=partEvents(p), i=ev.findIndex(o=>Math.abs(o.s-h.s)<1e-6&&o.n===h.n); if(i<0) return;
   snap(); if(S.sel!==h.pi){ S.sel=h.pi; renderParts(); syncCur(); }
   SELN={pi:h.pi,s:ev[i].s,n:ev[i].n}; RV.frozen=true;
   DRAG={pi:h.pi,x0:x,y0:y,orig:ev,L,i,mode:onEdge(h,x)?'len':'move',lastM:nMidi(h.n),moved:false};
   previewNote(p,h.n); });
 roll.addEventListener('pointermove',e=>{ const {x,y}=rpos(e);
-  if(!DRAG){ const h=hitNote(x,y); roll.style.cursor=h?(onEdge(h,x)?'ew-resize':'grab'):'default'; return; }
+  if(RDRAG){ const q=+$('quant').value, u=Math.max(0,Math.min(RV.maxL,Math.round(rU(x)/q)*q)); RANGE={a:Math.min(u,RDRAG.u0),b:Math.max(u,RDRAG.u0)}; showRange(); return; }
+  if(!DRAG){ const h=hitNote(x,y); roll.style.cursor=h?(onEdge(h,x)?'ew-resize':'grab'):'crosshair'; return; }
   const q=+$('quant').value, du=Math.round((x-DRAG.x0)/(RV.W-4)*RV.maxL/q)*q, o=DRAG.orig[DRAG.i];
   const ev=DRAG.orig.map(a=>({...a})), t=ev[DRAG.i];
   if(DRAG.mode==='len') t.l=Math.max(q,o.l+du);
@@ -602,13 +609,33 @@ roll.addEventListener('pointermove',e=>{ const {x,y}=rpos(e);
     if(m!==DRAG.lastM){ DRAG.lastM=m; previewNote(S.parts[DRAG.pi],t.n); } }
   if(t.s!==o.s||t.l!==o.l||t.n!==o.n) DRAG.moved=true;
   applyEvents(DRAG.pi,ev,DRAG.L,t); });
-const rEnd=()=>{ if(!DRAG) return; const d=DRAG; DRAG=null; RV.frozen=false; if(!d.moved){ UNDO.pop(); updUndo(); } else status('Note réglée : '+SELN.n+'. ↶ pour annuler.'); renderParts(); };
+const rEnd=()=>{ if(RDRAG){ RDRAG=null; RV.frozen=false; if(RANGE&&RANGE.b-RANGE.a<+$('quant').value-1e-6) RANGE=null; showRange(); return; }
+  if(!DRAG) return; const d=DRAG; DRAG=null; RV.frozen=false; if(!d.moved){ UNDO.pop(); updUndo(); } else status('Note réglée : '+SELN.n+'. ↶ pour annuler.'); renderParts(); };
 roll.addEventListener('pointerup',rEnd); roll.addEventListener('pointercancel',rEnd);
 roll.addEventListener('dblclick',e=>{ const {x,y}=rpos(e), h=hitNote(x,y);
   if(h){ snap(); const {ev,L}=partEvents(S.parts[h.pi]); applyEvents(h.pi,ev.filter(o=>!(Math.abs(o.s-h.s)<1e-6&&o.n===h.n)),L,null); renderParts(); status('Note supprimée. ↶ pour annuler.'); return; }
   const p=curPart(); if(!p||isPerc(p.type)) return;
   const q=+$('quant').value, u=Math.max(0,Math.floor(rU(x)/q)*q), m=Math.max(12,Math.min(119,rM(y)));
   snap(); const {ev,L}=partEvents(p), t={n:mName(m),s:u,l:stepDur}; ev.push(t); applyEvents(S.sel,ev,L,t); renderParts(); previewNote(p,t.n); status('Note '+t.n+' ajoutée.'); });
+/* sélection d'un passage (toutes les pistes, sauf la grille de rythme) */
+function showRange(){ const bar=$('rangeBar'); if(!RANGE||RANGE.b-RANGE.a<1e-6){ RANGE=null; bar.hidden=true; return; } bar.hidden=false;
+  const pos=u=>{ const m=Math.floor(u/8+1e-9)+1, t=(u-(m-1)*8)/2+1; return 'mesure '+m+(Math.abs(t-1)>1e-6?', temps '+fx(t):''); }, d=(RANGE.b-RANGE.a)/8;
+  $('rangeTxt').textContent=`Sélection : ${pos(RANGE.a)} → ${pos(RANGE.b)} (${fx(d)} mesure${d>1?'s':''})`; }
+function rangeEdit(cut){ if(!RANGE) return; const {a,b}=RANGE; let n=0, touched=false; snap();
+  S.parts.forEach(p=>{ if(isPerc(p.type)) return; const {ev,L}=partEvents(p); if(a>=L-1e-9) return;
+    const bb=Math.min(b,L), d=bb-a, out=[]; touched=true;
+    ev.forEach(e=>{ const e1=e.s+e.l;
+      if(e1<=a+1e-9){ out.push(e); return; }
+      if(e.s>=bb-1e-9){ out.push(cut?{...e,s:e.s-d}:e); return; }
+      n++;
+      const before=e.s<a-1e-9?a-e.s:0, after=e1>bb+1e-9?e1-bb:0;
+      if(cut){ if(before+after>0) out.push({n:e.n,s:before?e.s:a,l:before+after}); }
+      else { if(before) out.push({n:e.n,s:e.s,l:before}); if(after) out.push({n:e.n,s:bb,l:after}); } });
+    writeEvents(p,out,cut?L-d:L); });
+  if(!touched){ UNDO.pop(); updUndo(); }
+  RANGE=null; showRange(); SELN=null; dirty(); renderParts();
+  status(cut?`Passage coupé (${n} note${n>1?'s':''}), la suite a reculé. ↶ pour annuler.`:`${n} note${n>1?'s':''} effacée${n>1?'s':''}, le temps est gardé. ↶ pour annuler.`); }
+$('bRDel').onclick=()=>rangeEdit(false); $('bRCut').onclick=()=>rangeEdit(true); $('bRX').onclick=()=>{ RANGE=null; showRange(); };
 function nudge(ds,dm,dl,del){ const p=S.parts[SELN.pi]; if(!p){ SELN=null; return; }
   const {ev,L}=partEvents(p), t=ev.find(o=>Math.abs(o.s-SELN.s)<1e-6&&o.n===SELN.n); if(!t){ SELN=null; return; }
   snap(); const q=+$('quant').value;
@@ -661,7 +688,7 @@ function undo(){ if(!UNDO.length) return; S=JSON.parse(UNDO.pop()); SELN=null; r
 function readSongs(){ try{ return JSON.parse(localStorage.getItem(SONGS)||'{}')||{}; }catch(e){ return {}; } }
 function writeSongs(o){ try{ localStorage.setItem(SONGS,JSON.stringify(o)); return true; }catch(e){ return false; } }
 function emptyDrums(){ const r={}; DRUMS.forEach(d=>r[d.type]={vol:DEMO.drums.rows[d.type].vol,on:[]}); return {steps:16,rows:r}; }
-function refreshAll(){ stopPlay(); $('bpm').value=S.bpm; $('bpmV').textContent=S.bpm; $('name').value=S.name||''; renderParts(); renderDrums(); syncCur(); dirty(); renderSongList(); }
+function refreshAll(){ stopPlay(); RANGE=null; showRange(); $('bpm').value=S.bpm; $('bpmV').textContent=S.bpm; $('name').value=S.name||''; renderParts(); renderDrums(); syncCur(); dirty(); renderSongList(); }
 function renderSongList(){ const songs=readSongs(), names=Object.keys(songs).sort((a,b)=>a.localeCompare(b,'fr'));
   $('preset').innerHTML='<option value="">—</option>'+(names.length?'<optgroup label="Mes morceaux">'+names.map(n=>`<option value="m:${esc(n)}">${esc(n)}</option>`).join('')+'</optgroup>':'')
     +'<optgroup label="Exemples"><option value="demo">Démo piano + guitare</option>'+Object.keys(GAME).map(k=>`<option value="g:${k}">Musique du jeu : ${k}</option>`).join('')+'</optgroup>';
