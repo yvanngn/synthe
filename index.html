@@ -86,6 +86,8 @@ pre{margin:0;font-family:var(--f-code);font-size:12.5px;line-height:1.55;color:v
 .how{font-size:13.5px;color:var(--muted);margin:0}
 .how code,.sub code{font-family:var(--f-code);color:var(--ink);background:var(--lac3);padding:1px 5px}
 .kbd{font-family:var(--f-code);font-size:12px;border:1px solid var(--line);padding:0 5px;color:var(--ink)}
+.midi{font-family:var(--f-code);font-size:13px;color:var(--muted)}
+.midi.ok{color:var(--jade)}
 @media (prefers-reduced-motion:reduce){.btn.rec.on{animation:none}}
 </style>
 
@@ -107,6 +109,7 @@ pre{margin:0;font-family:var(--f-code);font-size:12.5px;line-height:1.55;color:v
         <select id="quant"><option value=".5">double croche</option><option value="1">croche</option><option value="2">noire</option></select></label>
       <label class="ctl">Charger
         <select id="preset"><option value="">—</option></select></label>
+      <span class="midi" id="midiSt">MIDI…</span>
     </div>
     <div class="status" id="status" aria-live="polite"></div>
   </div>
@@ -131,7 +134,7 @@ pre{margin:0;font-family:var(--f-code);font-size:12.5px;line-height:1.55;color:v
       <button class="btn ghost" id="bBack">Effacer la dernière</button>
     </div>
     <div class="kbwrap"><div class="kb" id="kb" aria-label="Clavier de piano"></div></div>
-    <p class="how">Clavier AZERTY : <span class="kbd">Q S D F G H J K L M Ù</span> = touches blanches, <span class="kbd">Z E T Y U O P</span> = noires, <span class="kbd">W</span>/<span class="kbd">X</span> = octave, <span class="kbd">1</span>–<span class="kbd">5</span> = percussions, <span class="kbd">Espace</span> = lire/arrêter.</p>
+    <p class="how">Clavier AZERTY : <span class="kbd">Q S D F G H J K L M Ù</span> = touches blanches, <span class="kbd">Z E T Y U O P</span> = noires, <span class="kbd">W</span>/<span class="kbd">X</span> = octave, <span class="kbd">1</span>–<span class="kbd">5</span> = percussions, <span class="kbd">Espace</span> = lire/arrêter. Un clavier MIDI USB est reconnu tout seul : frappe, pédale de sustain et pads de batterie compris.</p>
   </div>
 
   <div class="grid2">
@@ -336,20 +339,28 @@ function stopRec(){
 /* =========== jeu en direct =========== */
 const held={};
 function curPart(){ return S.parts[S.sel]||S.parts[0]; }
-function noteOn(m,src){
+function noteOn(m,vel){
+  if(held[m]&&held[m].sus) release(m);
   if(held[m]) return; initAudio(); if(!AC.ctx) return;
   const p=curPart(); if(!p) return; const n=mName(m); if(!/^[A-G]#?\d$/.test(n)) return;
-  const now=AC.ctx.currentTime, vg=AC.ctx.createGain(); vg.connect(AC.bus);
+  const now=AC.ctx.currentTime, vg=AC.ctx.createGain(); vg.gain.value=vel==null?1:.3+.7*vel; vg.connect(AC.bus);
   if(mode==='step'){ play1(p.type,freq(n),now,Math.max(.08,stepDur*E()*p.len),p.vol,vg); held[m]={vg};
     p.text=(p.text.trim()+' '+n+':'+fx(stepDur)).trim(); renderParts(); dirty(); }
   else { play1(p.type,freq(n),now,PERC.includes(p.type)?1:3.5,p.vol,vg); held[m]={vg};
     if(REC.on){ const r={n,s:recUnits(),e:null}; REC.notes.push(r); REC.open[m]=r; } }
   keyEl(m,true); status(n+' · '+TY[p.type].label);
 }
+let sustain=false;
 function noteOff(m){
-  const h=held[m]; if(!h) return; delete held[m]; keyEl(m,false);
+  const h=held[m]; if(!h||h.sus) return; keyEl(m,false);
+  if(sustain&&mode==='live'){ h.sus=true; return; }
+  release(m);
+}
+function setSustain(on){ sustain=on; if(!on) Object.keys(held).forEach(k=>{ if(held[k].sus) release(+k); }); }
+function release(m){
+  const h=held[m]; if(!h) return; delete held[m];
   const p=curPart(), now=AC.ctx.currentTime;
-  if(mode==='live'&&!PERC.includes(p.type)){ h.vg.gain.setValueAtTime(1,now); h.vg.gain.setTargetAtTime(0,now,p.type==='guitar'?.15:p.type==='piano'?.12:.04); }
+  if(mode==='live'&&!PERC.includes(p.type)){ h.vg.gain.setValueAtTime(h.vg.gain.value,now); h.vg.gain.setTargetAtTime(0,now,p.type==='guitar'?.15:p.type==='piano'?.12:.04); }
   if(REC.open[m]){ REC.open[m].e=recUnits(); delete REC.open[m]; }
 }
 function hitDrum(i){
@@ -375,7 +386,7 @@ function renderKB(){
     if(m+1<=lo+octs*12&&NN[(m+1)%12].includes('#')){ const b=document.createElement('div'); b.className='bk'; b.dataset.m=m+1; b.style.left=(i+1)*ww-ww*.32+'%'; b.style.width=ww*.64+'%';
       b.innerHTML=lab[m+1]?`<span class="k-l">${lab[m+1]}</span>`:''; kb.appendChild(b); } });
   $('octV').textContent=oct;
-  Object.keys(held).forEach(m=>keyEl(+m,true));
+  Object.keys(held).forEach(m=>{ if(!held[m].sus) keyEl(+m,true); });
 }
 function keyEl(m,on){ const el=$('kb').querySelector(`[data-m="${m}"]`); if(el) el.classList.toggle('on',on); }
 const ptr={};
@@ -396,9 +407,35 @@ document.addEventListener('keydown',e=>{
   const m=codeMap()[e.code]; if(m!=null){ e.preventDefault(); downCodes[e.code]=m; noteOn(m); }
 });
 document.addEventListener('keyup',e=>{ const m=downCodes[e.code]; if(m!=null){ delete downCodes[e.code]; noteOff(m); } });
-window.addEventListener('blur',()=>{ Object.keys(held).forEach(m=>noteOff(+m)); });
+window.addEventListener('blur',()=>{ sustain=false; Object.keys(held).forEach(m=>{ keyEl(+m,false); release(+m); }); });
 function setOct(o){ oct=Math.max(1,Math.min(6,o)); renderKB(); }
 $('octDn').onclick=()=>setOct(oct-1); $('octUp').onclick=()=>setOct(oct+1);
+
+/* =========== clavier MIDI USB (Web MIDI) =========== */
+// canal 10 = batterie General MIDI (pads) : 0 grosse caisse, 1 caisse claire, 2 charleston, 3 timbale, 4 cymbale
+const GM_DRUM={35:0,36:0,37:1,38:1,39:1,40:1,42:2,44:2,46:2,41:3,43:3,45:3,47:3,48:3,50:3,49:4,51:4,52:4,55:4,57:4,59:4};
+let midiAcc=null;
+function midiMsg(e){
+  const [st,d1,d2]=e.data, cmd=st&0xf0, ch=st&0x0f;
+  if(cmd===0x90&&d2>0){ if(ch===9&&GM_DRUM[d1]!=null) hitDrum(GM_DRUM[d1]); else noteOn(d1,d2/127); }
+  else if(cmd===0x80||(cmd===0x90&&d2===0)){ if(ch!==9) noteOff(d1); }
+  else if(cmd===0xB0&&d1===64) setSustain(d2>=64);
+  else if(cmd===0xB0&&(d1===120||d1===123)){ sustain=false; Object.keys(held).forEach(k=>{ keyEl(+k,false); release(+k); }); }
+}
+function midiState(){
+  if(!midiAcc) return; const names=[];
+  midiAcc.inputs.forEach(i=>{ i.onmidimessage=midiMsg; if(i.state==='connected') names.push(i.name); });
+  const el=$('midiSt'), son=AC.ctx&&AC.ctx.state==='running';
+  el.classList.toggle('ok',!!names.length&&son);
+  el.textContent=!names.length?'MIDI : aucun clavier branché':'MIDI : '+names.join(', ')+(son?' · prêt':' · clique une fois dans la page pour activer le son');
+}
+function initMidi(){
+  const el=$('midiSt');
+  if(!navigator.requestMIDIAccess){ el.textContent='MIDI non pris en charge ici : utilise Chrome, Edge ou Firefox'; return; }
+  navigator.requestMIDIAccess().then(acc=>{ midiAcc=acc; midiState(); acc.onstatechange=midiState; })
+    .catch(()=>{ el.innerHTML='MIDI refusé par le navigateur · <button class="ico" id="midiRetry" style="width:auto;padding:0 8px">Réessayer</button>'; $('midiRetry').onclick=initMidi; });
+}
+['pointerdown','keydown'].forEach(ev=>document.addEventListener(ev,()=>{ initAudio(); setTimeout(midiState,50); }));
 
 /* =========== pistes =========== */
 function typeOptions(sel){ return TYPES.map(([id,l])=>`<option value="${id}"${id===sel?' selected':''}>${l}</option>`).join(''); }
@@ -533,7 +570,7 @@ $('preset').onchange=()=>{ const v=$('preset').value; if(!v) return; stopPlay();
   $('preset').value=''; $('bpm').value=S.bpm; $('bpmV').textContent=S.bpm; $('name').value=S.name; renderParts(); renderDrums(); syncCur(); dirty(); status('Chargé. Appuie sur Lire.'); };
 
 $('name').value=S.name||'maMusique';
-renderKB(); renderDur(); renderParts(); renderDrums(); syncCur(); dirty(); drawRoll();
+renderKB(); renderDur(); renderParts(); renderDrums(); syncCur(); dirty(); drawRoll(); initMidi();
 </script>
 
 </body>
