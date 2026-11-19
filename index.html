@@ -103,7 +103,7 @@ pre{margin:0;font-family:var(--f-code);font-size:12.5px;line-height:1.55;color:v
 <div class="wrap">
   <header class="col" style="gap:8px">
     <h1>Synthé</h1>
-    <p class="sub">Joue au clavier ou à la souris, enregistre en direct ou note par note, ajoute un rythme, puis copie la musique au format <code>TRACKS</code> du jeu. Piano, guitare, basse, violon, flûte, grosse caisse et charleston sont des instruments nouveaux : leur moteur est fourni dans l’onglet « Moteur ».</p>
+    <p class="sub">Joue au clavier ou à la souris, enregistre en direct ou note par note, ajoute un rythme, puis copie la musique au format <code>TRACKS</code> du jeu. Piano, guitare, basse, violon, flûte, harmonica, banjo, grosse caisse et charleston sont des instruments nouveaux : leur moteur est fourni dans l’onglet « Moteur ».</p>
   </header>
 
   <div class="box">
@@ -258,6 +258,28 @@ function instrPlus(type,f,t,dur,vol,dest){
       bp.type='bandpass'; bp.frequency.value=f*2; bp.Q.value=2; ng.gain.setValueAtTime(.35,t); ng.gain.exponentialRampToValueAtTime(.08,t+.15);
       s.connect(bp); bp.connect(ng); ng.connect(g); s.start(t); s.stop(stop); }
     g.connect(dest); return true; }
+  if(type==='harmonica'){ // anche libre : petit glissé à l'attaque, vibrato, formant nasal
+    const att=.03, end=t+Math.max(att,dur), rel=.12, stop=end+rel+.05;
+    const g=c.createGain(); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(vol,t+att); g.gain.setValueAtTime(vol,end); g.gain.linearRampToValueAtTime(0,end+rel);
+    const lfo=c.createOscillator(), lg=c.createGain(); lfo.frequency.value=6; lg.gain.setValueAtTime(0,t); lg.gain.linearRampToValueAtTime(8,t+.4); lfo.connect(lg); lfo.start(t); lfo.stop(stop);
+    const mix=c.createGain(), lp=c.createBiquadFilter(), pk=c.createBiquadFilter(); mix.gain.value=.5;
+    lp.type='lowpass'; lp.frequency.value=Math.min(6000,f*5); pk.type='peaking'; pk.frequency.value=1500; pk.Q.value=1.5; pk.gain.value=8;
+    [['square',0],['sawtooth',6]].forEach(([w,dt])=>{ const o=c.createOscillator(); o.type=w; o.detune.value=dt;
+      o.frequency.setValueAtTime(f*.97,t); o.frequency.linearRampToValueAtTime(f,t+.05); lg.connect(o.detune); o.connect(mix); o.start(t); o.stop(stop); });
+    if(!noiseBuf) noise(t,.01,.0001);
+    const s=c.createBufferSource(), bp=c.createBiquadFilter(), ng=c.createGain(); s.buffer=noiseBuf; s.loop=true;
+    bp.type='bandpass'; bp.frequency.value=2500; bp.Q.value=1; ng.gain.value=.05; s.connect(bp); bp.connect(ng); ng.connect(g); s.start(t); s.stop(stop);
+    mix.connect(lp); lp.connect(pk); pk.connect(g); g.connect(dest); return true; }
+  if(type==='banjo'){ // corde pincée brillante qui s'éteint vite, caisse en peau
+    const sr=c.sampleRate, d=Math.min(1.8,dur+.5), key='bj'+Math.round(f)+'|'+d.toFixed(1); let b=KS[key];
+    if(!b){ const n=Math.floor(sr*d), p=Math.max(2,Math.round(sr/f)); b=c.createBuffer(1,n,sr); const x=b.getChannelData(0);
+      for(let i=0;i<p;i++) x[i]=Math.random()*2-1;
+      for(let i=p;i<n;i++) x[i]=(x[i-p]*.6+x[i-p+1]*.4)*.991;
+      KS[key]=b; }
+    const s=c.createBufferSource(), g=c.createGain(), hp=c.createBiquadFilter(), pk=c.createBiquadFilter(); s.buffer=b;
+    hp.type='highpass'; hp.frequency.value=180; pk.type='peaking'; pk.frequency.value=2200; pk.Q.value=1.4; pk.gain.value=7;
+    g.gain.setValueAtTime(vol,t); g.gain.setValueAtTime(vol,t+Math.max(.04,Math.min(dur,.3))); g.gain.exponentialRampToValueAtTime(.0001,t+d);
+    s.connect(hp); hp.connect(pk); pk.connect(g); g.connect(dest); s.start(t); s.stop(t+d+.05); return true; }
   if(type==='kick'){ const o=c.createOscillator(), g=c.createGain(); o.type='sine'; o.frequency.setValueAtTime(150,t); o.frequency.exponentialRampToValueAtTime(45,t+.12);
     g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(.0001,t+.35); o.connect(g); g.connect(dest); o.start(t); o.stop(t+.4); return true; }
   if(type==='hat'){ noise(t,.05,vol,'highpass',7000); return true; }
@@ -280,7 +302,7 @@ function instr(type,f,t,dur,vol,dest){
   if(type==='crash'){ noise(t,2.2,vol,'highpass',2500); }
   if(type==='snare'){ noise(t,.13,vol,'highpass',1800); tone(190,t,.07,'triangle',vol*.5,dest); }
 }
-const INSTR={brass:1,strings:1,timp:1,crash:1,snare:1,piano:1,guitar:1,bass:1,violin:1,flute:1,kick:1,hat:1};
+const INSTR={brass:1,strings:1,timp:1,crash:1,snare:1,piano:1,guitar:1,bass:1,violin:1,flute:1,harmonica:1,banjo:1,kick:1,hat:1};
 function play1(type,f,t,dur,vol,dest){ if(INSTR[type]) instr(type,f,t,dur,vol,dest); else tone(f,t,dur,type,vol,dest); }
 
 /* =========== notes =========== */
@@ -297,7 +319,7 @@ function parseText(s){ const out=[], bad=[];
 /* =========== instruments =========== */
 const TYPES=[
   ['piano','Piano',.25,1,'#e3b44c'],['guitar','Guitare',.35,1.5,'#ffb07a'],
-  ['bass','Basse',.21,1,'#8a7cff'],['violin','Violon',.085,1,'#e0708a'],['flute','Flûte',.1,1,'#a8e6e0'],
+  ['bass','Basse',.21,1,'#8a7cff'],['violin','Violon',.085,1,'#e0708a'],['flute','Flûte',.1,1,'#a8e6e0'],['harmonica','Harmonica',.11,1,'#6fc3a0'],['banjo','Banjo',.25,1,'#d9b38c'],
   ['triangle','Triangle (jeu)',.1,1,'#c9a7ff'],['square','Carré (jeu)',.03,.8,'#7fe0ff'],['sine','Sinus (jeu)',.12,1,'#8dff9a'],['sawtooth','Scie (jeu)',.03,.8,'#ff8fc0'],
   ['brass','Cuivres (jeu)',.05,.95,'#f2c94c'],['strings','Cordes (jeu)',.03,1,'#9fd6ff'],
   ['timp','Timbale (jeu)',.4,1,'#d0a080'],['snare','Caisse claire (jeu)',.07,1,'#f7ecd6'],['crash','Cymbale (jeu)',.15,1,'#ffe066'],
@@ -305,7 +327,7 @@ const TYPES=[
 const TY={}; TYPES.forEach(([id,label,vol,len,col])=>TY[id]={id,label,vol,len,col});
 const PERC=['kick','snare','hat','timp','crash'];
 const DRUMS=[{type:'kick',note:'C2',key:'Digit1'},{type:'snare',note:'C5',key:'Digit2'},{type:'hat',note:'C5',key:'Digit3'},{type:'timp',note:'C2',key:'Digit4'},{type:'crash',note:'C5',key:'Digit5'}];
-const NEW_TYPES=['piano','guitar','bass','violin','flute','kick','hat'];
+const NEW_TYPES=['piano','guitar','bass','violin','flute','harmonica','banjo','kick','hat'];
 
 /* =========== état =========== */
 const DEMO={bpm:96,name:'maMusique',sel:0,
@@ -405,7 +427,7 @@ function setSustain(on){ sustain=on; if(!on) Object.keys(held).forEach(k=>{ if(h
 function release(m){
   const h=held[m]; if(!h) return; delete held[m];
   const p=curPart(), now=AC.ctx.currentTime;
-  if(mode==='live'&&!PERC.includes(p.type)){ h.vg.gain.setValueAtTime(h.vg.gain.value,now); h.vg.gain.setTargetAtTime(0,now,({guitar:.15,piano:.12,violin:.12,flute:.08,bass:.06}[p.type]||.04)); }
+  if(mode==='live'&&!PERC.includes(p.type)){ h.vg.gain.setValueAtTime(h.vg.gain.value,now); h.vg.gain.setTargetAtTime(0,now,({guitar:.15,piano:.12,violin:.12,flute:.08,bass:.06,harmonica:.06,banjo:.12}[p.type]||.04)); }
   if(REC.open[m]){ REC.open[m].e=recUnits(); delete REC.open[m]; }
 }
 function hitDrum(i){
@@ -741,7 +763,7 @@ function sfxCode(){
   return `  ${nameOf()}(){const t=this.n();\n    ${body.join('\n    ')}\n  },`;
 }
 function engineCode(){
-  return `// 1) À coller juste avant function instr(…) :\nconst KS={}; // cache des cordes de guitare\n${instrPlus.toString()}\n\n// 2) Première ligne à ajouter DANS function instr(type,f,t,dur,vol,dest){ :\n  if(instrPlus(type,f,t,dur,vol,dest)) return;\n\n// 3) Juste après const INSTR={…}; :\nObject.assign(INSTR,{piano:1,guitar:1,bass:1,violin:1,flute:1,kick:1,hat:1});`;
+  return `// 1) À coller juste avant function instr(…) :\nconst KS={}; // cache des cordes de guitare\n${instrPlus.toString()}\n\n// 2) Première ligne à ajouter DANS function instr(type,f,t,dur,vol,dest){ :\n  if(instrPlus(type,f,t,dur,vol,dest)) return;\n\n// 3) Juste après const INSTR={…}; :\nObject.assign(INSTR,{piano:1,guitar:1,bass:1,violin:1,flute:1,harmonica:1,banjo:1,kick:1,hat:1});`;
 }
 function renderCode(){
   const n=nameOf(), nw=usedNew();
@@ -749,7 +771,7 @@ function renderCode(){
   const warn=nw.length?` Elle utilise ${nw.map(t=>TY[t].label.toLowerCase()).join(', ')} : ajoute d’abord le code de l’onglet « Moteur » (une seule fois).`:'';
   $('how').innerHTML=tab==='music'?`Colle ce bloc dans <code>const TRACKS={…}</code>, puis lance-le avec <code>playMusic('${n}')</code>. Elle tourne en boucle comme les autres musiques.`+warn
     :tab==='sfx'?`Version jouée une seule fois : colle-la dans <code>const sfx={…}</code> et appelle <code>sfx.${n}()</code>.`+warn
-    :`Code à ajouter une seule fois au moteur audio du jeu pour avoir le piano, la guitare, la basse, le violon, la flûte, la grosse caisse et le charleston. Les instruments existants ne changent pas.`;
+    :`Code à ajouter une seule fois au moteur audio du jeu pour avoir le piano, la guitare, la basse, le violon, la flûte, l’harmonica, le banjo, la grosse caisse et le charleston. Les instruments existants ne changent pas.`;
 }
 $('tabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{ tab=b.dataset.t; $('tabs').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b)); renderCode(); });
 $('name').oninput=()=>{ S.name=$('name').value; renderCode(); save(); $('bDelSong').disabled=!readSongs()[S.name]; };
