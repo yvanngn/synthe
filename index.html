@@ -79,6 +79,11 @@ input[type=range]{accent-color:var(--gold)}
 .st.now{outline:2px solid var(--ink);outline-offset:-2px}
 canvas{width:100%;display:block}
 #roll{height:260px;touch-action:none}
+.rollwrap{overflow-x:auto;overflow-y:hidden;max-width:100%}
+.grip{height:12px;cursor:ns-resize;touch-action:none;border:1px solid var(--line);border-top:0;background:repeating-linear-gradient(90deg,var(--line) 0 2px,transparent 2px 6px) center/40px 4px no-repeat,var(--lac3)}
+.grip:hover{background-color:var(--line)}
+.ico.txt{min-width:0;padding:0 8px;font-family:var(--f-code);font-size:12px}
+.zv{font-family:var(--f-code);font-size:12px;color:var(--ink);min-width:2.6em;text-align:center}
 .ico:disabled{opacity:.35;cursor:default}
 .proj{border-bottom:1px solid var(--line);padding-bottom:10px}
 .tabs{display:flex;gap:4px;flex-wrap:wrap}
@@ -160,10 +165,14 @@ pre{margin:0;font-family:var(--f-code);font-size:12.5px;line-height:1.55;color:v
       </div>
     </div>
     <div class="col">
-      <div class="box"><span class="lbl">Partition</span>
-        <div class="bar" id="rangeBar" hidden><span class="ctl" id="rangeTxt"></span><button class="btn ghost" id="bRDel" title="Suppr">Effacer les notes</button><button class="btn" id="bRCut" title="Maj+Suppr">Couper le passage</button><button class="ico" id="bRX" title="Annuler la sélection (Échap)" aria-label="Annuler la sélection">✕</button></div>
-        <canvas id="roll" width="600" height="260" aria-label="Partition éditable"></canvas>
-        <p class="how">Glisse sur une zone vide pour sélectionner un passage : <span class="kbd">Suppr</span> efface ses notes en gardant le temps, <span class="kbd">Maj</span>+<span class="kbd">Suppr</span> le coupe et fait reculer la suite. Glisse une note pour la décaler (temps et hauteur), tire son bord droit pour la rallonger. Double-clic : ajouter une note (piste sélectionnée) ou en supprimer une. Note sélectionnée : <span class="kbd">←</span><span class="kbd">→</span> décaler, <span class="kbd">↑</span><span class="kbd">↓</span> demi-ton, <span class="kbd">Maj</span>+<span class="kbd">←</span><span class="kbd">→</span> durée, <span class="kbd">Suppr</span> effacer. Le pas suit le « Calage ».</p></div>
+      <div class="box"><div class="bar" style="justify-content:space-between"><span class="lbl">Partition</span>
+          <span class="bar" style="gap:6px"><span class="ctl">Zoom</span><button class="ico" id="bZout" aria-label="Dézoomer">−</button><span class="zv" id="zoomV">×1</span><button class="ico" id="bZin" aria-label="Zoomer">+</button>
+          <span class="ctl">Hauteur</span><button class="ico" id="bHout" aria-label="Réduire la hauteur">−</button><button class="ico" id="bHin" aria-label="Agrandir la hauteur">+</button>
+          <span class="ctl">Piste</span><button class="ico txt" id="bLm" title="Raccourcir la piste sélectionnée d’une mesure">− mesure</button><button class="ico txt" id="bLp" title="Rallonger la piste sélectionnée d’une mesure">+ mesure</button></span></div>
+        <div><div class="rollwrap" id="rollWrap"><canvas id="roll" width="600" height="260" aria-label="Partition éditable"></canvas></div><div class="grip" id="rollGrip" title="Tirer pour agrandir la partition"></div></div>
+        <div class="bar" id="rangeBar" hidden><span class="ctl" id="rangeTxt"></span><button class="btn ghost" id="bRDel" title="Suppr">Effacer les notes</button><button class="btn" id="bRCut" title="Maj+Suppr">Couper le passage</button><button class="btn ghost" id="bRCopy" title="Ctrl+C">Copier</button><button class="btn ghost" id="bRDup" title="Ctrl+D">Dupliquer</button><button class="ico" id="bRX" title="Annuler la sélection (Échap)" aria-label="Annuler la sélection">✕</button></div>
+        <div class="bar" id="clipBar" hidden><span class="ctl" id="clipTxt"></span><button class="btn" id="bPaste" title="Ctrl+V">Coller</button><button class="btn ghost" id="bPasteIns" title="Ctrl+Maj+V">Insérer</button><button class="ico" id="bClipX" title="Vider le presse-papier" aria-label="Vider le presse-papier">✕</button></div>
+        <p class="how">Clic sur une zone vide : place le curseur de collage (trait vert). <span class="kbd">Ctrl</span>+<span class="kbd">C</span> copie la sélection ou la note choisie, <span class="kbd">Ctrl</span>+<span class="kbd">V</span> colle au curseur en remplaçant, <span class="kbd">Ctrl</span>+<span class="kbd">Maj</span>+<span class="kbd">V</span> insère en poussant la suite, <span class="kbd">Ctrl</span>+<span class="kbd">D</span> duplique la sélection juste après elle. <span class="kbd">Ctrl</span>+molette ou les boutons zooment, la barre sous la partition l’agrandit. Glisse sur une zone vide pour sélectionner un passage : <span class="kbd">Suppr</span> efface ses notes en gardant le temps, <span class="kbd">Maj</span>+<span class="kbd">Suppr</span> le coupe et fait reculer la suite. Glisse une note pour la décaler (temps et hauteur), tire son bord droit pour la rallonger. Double-clic : ajouter une note (piste sélectionnée) ou en supprimer une. Note sélectionnée : <span class="kbd">←</span><span class="kbd">→</span> décaler, <span class="kbd">↑</span><span class="kbd">↓</span> demi-ton, <span class="kbd">Maj</span>+<span class="kbd">←</span><span class="kbd">→</span> durée, <span class="kbd">Suppr</span> effacer. Le pas suit le « Calage ».</p></div>
       <div class="box">
         <div class="bar" style="justify-content:space-between">
           <div class="tabs" id="tabs"><button class="on" data-t="music">Musique</button><button data-t="sfx">Bruitage</button><button data-t="engine">Moteur</button></div>
@@ -435,6 +444,11 @@ window.addEventListener('pointerup',up); window.addEventListener('pointercancel'
 const typing=()=>/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)&&document.activeElement.type!=='range'&&document.activeElement.type!=='checkbox';
 const downCodes={};
 document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&!e.altKey&&!typing()){
+    if(e.code==='KeyC'&&(RANGE||SELN)){ if(copySel()) e.preventDefault(); return; }
+    if(e.code==='KeyX'&&RANGE){ e.preventDefault(); copySel(); rangeEdit(false); return; }
+    if(e.code==='KeyV'&&CLIP){ e.preventDefault(); pasteClip(e.shiftKey); return; }
+    if(e.code==='KeyD'&&RANGE){ e.preventDefault(); dupSel(); return; } }
   if((e.ctrlKey||e.metaKey)&&e.code==='KeyZ'&&!typing()){ e.preventDefault(); undo(); return; }
   if(typing()||e.metaKey||e.ctrlKey||e.altKey) return;
   if(RANGE&&(e.code==='Delete'||e.code==='Backspace')){ e.preventDefault(); rangeEdit(e.shiftKey); return; }
@@ -581,15 +595,19 @@ function drawRoll(){
         if(SELN&&SELN.pi===p.idx&&Math.abs(SELN.s-e.s)<1e-6&&SELN.n===e.n){ g.globalAlpha=1; g.strokeStyle='#f7ecd6'; g.lineWidth=2; g.strokeRect(x-1,y-1,w+2,h+2); g.lineWidth=1; } } }); });
   g.globalAlpha=1;
   if(RANGE){ const xa=rX(RANGE.a), xb=rX(RANGE.b); g.fillStyle='rgba(227,180,76,.2)'; g.fillRect(xa,0,xb-xa,H-12); g.fillStyle='#e3b44c'; g.fillRect(xa,0,2,H-12); g.fillRect(xb-2,0,2,H-12); }
-  if(PB.on&&AC.ctx){ const u=(AC.ctx.currentTime-PB.t0)/E(); if(u>=0){ const x=rX(u%maxL); g.fillStyle='#f7ecd6'; g.fillRect(x,0,2,H-12); }
+  if(CUR!=null&&!RANGE){ const xc=rX(CUR); g.fillStyle='#57b38e'; g.fillRect(xc-1,0,2,H-12); g.beginPath(); g.moveTo(xc-5,0); g.lineTo(xc+5,0); g.lineTo(xc,6); g.fill(); }
+  if(PB.on&&AC.ctx){ const u=(AC.ctx.currentTime-PB.t0)/E(); if(u>=0){ const x=rX(u%maxL); g.fillStyle='#f7ecd6'; g.fillRect(x,0,2,H-12); const wr=$('rollWrap'); if(VIEW.zx>1&&!DRAG&&!RDRAG&&(x<wr.scrollLeft||x>wr.scrollLeft+wr.clientWidth-20)) wr.scrollLeft=x-20; }
     const step=Math.floor(((u%(S.drums.steps*.5))+S.drums.steps*.5)%(S.drums.steps*.5)/.5);
     document.querySelectorAll('.st.now').forEach(b=>b.classList.remove('now')); if(u>=0) document.querySelectorAll(`.st[data-k="${step}"]`).forEach(b=>b.classList.add('now')); }
   else document.querySelectorAll('.st.now').forEach(b=>b.classList.remove('now'));
   requestAnimationFrame(drawRoll);
 }
-function hitNote(x,y){ let best=null; for(const h of RV.hits) if(x>=h.x-2&&x<=h.x+h.w+2&&y>=h.y-2&&y<=h.y+h.h+2){ if(!best||(h.sel&&!best.sel)) best=h; } return best; }
+function hitNote(x,y){ let best=null, bd=1e9; // la note sous le pointeur, sinon la plus proche en hauteur : jamais la voisine d'un accord
+  for(const h of RV.hits){ if(x<h.x-2||x>h.x+h.w+8||y<h.y-2||y>h.y+h.h+2) continue;
+    const inX=x>=h.x&&x<=h.x+h.w, inY=y>=h.y&&y<=h.y+h.h, d=(inY?0:1e4)+(inX?0:100)+Math.abs(y-(h.y+h.h/2))*10+(h.sel?0:1);
+    if(d<bd){ bd=d; best=h; } } return best; }
 const roll=$('roll'), rpos=e=>{ const r=roll.getBoundingClientRect(); return {x:e.clientX-r.left,y:e.clientY-r.top}; };
-const onEdge=(h,x)=>h.w>10&&x>h.x+h.w-6;
+const onEdge=(h,x)=>x>=h.x+h.w-Math.min(6,h.w/3)&&x<=h.x+h.w+8; // poignée qui déborde à droite : même les petites notes s'allongent
 roll.addEventListener('pointerdown',e=>{ const {x,y}=rpos(e), h=hitNote(x,y);
   if(!h){ SELN=null; const q=+$('quant').value, u=Math.max(0,Math.min(RV.maxL,Math.round(rU(x)/q)*q));
     RDRAG={u0:u}; RANGE={a:u,b:u}; RV.frozen=true; try{ roll.setPointerCapture(e.pointerId); }catch(_){} showRange(); return; }
@@ -609,7 +627,7 @@ roll.addEventListener('pointermove',e=>{ const {x,y}=rpos(e);
     if(m!==DRAG.lastM){ DRAG.lastM=m; previewNote(S.parts[DRAG.pi],t.n); } }
   if(t.s!==o.s||t.l!==o.l||t.n!==o.n) DRAG.moved=true;
   applyEvents(DRAG.pi,ev,DRAG.L,t); });
-const rEnd=()=>{ if(RDRAG){ RDRAG=null; RV.frozen=false; if(RANGE&&RANGE.b-RANGE.a<+$('quant').value-1e-6) RANGE=null; showRange(); return; }
+const rEnd=()=>{ if(RDRAG){ const u0=RDRAG.u0; RDRAG=null; RV.frozen=false; if(!RANGE||RANGE.b-RANGE.a<+$('quant').value-1e-6){ RANGE=null; CUR=u0; } else CUR=null; showRange(); return; }
   if(!DRAG) return; const d=DRAG; DRAG=null; RV.frozen=false; if(!d.moved){ UNDO.pop(); updUndo(); } else status('Note réglée : '+SELN.n+'. ↶ pour annuler.'); renderParts(); };
 roll.addEventListener('pointerup',rEnd); roll.addEventListener('pointercancel',rEnd);
 roll.addEventListener('dblclick',e=>{ const {x,y}=rpos(e), h=hitNote(x,y);
@@ -618,7 +636,7 @@ roll.addEventListener('dblclick',e=>{ const {x,y}=rpos(e), h=hitNote(x,y);
   const q=+$('quant').value, u=Math.max(0,Math.floor(rU(x)/q)*q), m=Math.max(12,Math.min(119,rM(y)));
   snap(); const {ev,L}=partEvents(p), t={n:mName(m),s:u,l:stepDur}; ev.push(t); applyEvents(S.sel,ev,L,t); renderParts(); previewNote(p,t.n); status('Note '+t.n+' ajoutée.'); });
 /* sélection d'un passage (toutes les pistes, sauf la grille de rythme) */
-function showRange(){ const bar=$('rangeBar'); if(!RANGE||RANGE.b-RANGE.a<1e-6){ RANGE=null; bar.hidden=true; return; } bar.hidden=false;
+function showRange(){ const bar=$('rangeBar'); if(typeof updClip==='function') updClip(); if(!RANGE||RANGE.b-RANGE.a<1e-6){ RANGE=null; bar.hidden=true; return; } bar.hidden=false;
   const pos=u=>{ const m=Math.floor(u/8+1e-9)+1, t=(u-(m-1)*8)/2+1; return 'mesure '+m+(Math.abs(t-1)>1e-6?', temps '+fx(t):''); }, d=(RANGE.b-RANGE.a)/8;
   $('rangeTxt').textContent=`Sélection : ${pos(RANGE.a)} → ${pos(RANGE.b)} (${fx(d)} mesure${d>1?'s':''})`; }
 function rangeEdit(cut){ if(!RANGE) return; const {a,b}=RANGE; let n=0, touched=false; snap();
@@ -636,6 +654,66 @@ function rangeEdit(cut){ if(!RANGE) return; const {a,b}=RANGE; let n=0, touched=
   RANGE=null; showRange(); SELN=null; dirty(); renderParts();
   status(cut?`Passage coupé (${n} note${n>1?'s':''}), la suite a reculé. ↶ pour annuler.`:`${n} note${n>1?'s':''} effacée${n>1?'s':''}, le temps est gardé. ↶ pour annuler.`); }
 $('bRDel').onclick=()=>rangeEdit(false); $('bRCut').onclick=()=>rangeEdit(true); $('bRX').onclick=()=>{ RANGE=null; showRange(); };
+/* copier / coller / dupliquer, curseur de collage, longueur de piste */
+let CLIP=null, CUR=null;
+const posTxt=u=>{ const m=Math.floor(u/8+1e-9)+1, t=(u-(m-1)*8)/2+1; return 'mesure '+m+(Math.abs(t-1)>1e-6?', temps '+fx(t):''); };
+function cutEv(ev,a,b,shift){ const d=b-a, out=[]; ev.forEach(e=>{ const e1=e.s+e.l;
+  if(e1<=a+1e-9) out.push(e); else if(e.s>=b-1e-9) out.push(shift?{...e,s:e.s-d}:e);
+  else { const before=e.s<a-1e-9?a-e.s:0, after=e1>b+1e-9?e1-b:0;
+    if(shift){ if(before+after>0) out.push({n:e.n,s:before?e.s:a,l:before+after}); }
+    else { if(before) out.push({n:e.n,s:e.s,l:before}); if(after) out.push({n:e.n,s:b,l:after}); } } }); return out; }
+function insEv(ev,at,len){ const out=[]; ev.forEach(e=>{ const e1=e.s+e.l;
+  if(e1<=at+1e-9) out.push(e); else if(e.s>=at-1e-9) out.push({...e,s:e.s+len});
+  else { out.push({...e,l:at-e.s}); out.push({...e,s:at+len,l:e1-at}); } }); return out; }
+function pasteAt(){ return RANGE?RANGE.a:CUR!=null?CUR:RV.maxL; }
+function updClip(){ const bar=$('clipBar'); bar.hidden=!CLIP; if(!CLIP) return;
+  const nb=CLIP.parts.reduce((a,p)=>a+p.ev.length,0), where=RANGE?'à la place de la sélection':CUR!=null?'au curseur ('+posTxt(CUR)+')':'à la fin du morceau';
+  $('clipTxt').textContent=`Copié : ${nb} note${nb>1?'s':''} sur ${fx(CLIP.len/8)} mesure${CLIP.len>8?'s':''}${CLIP.parts.length===1?' (une piste : collée sur la piste sélectionnée)':''}. Collage ${where}.`; }
+function copySel(){
+  if(RANGE){ const {a,b}=RANGE, parts=[];
+    S.parts.forEach((p,pi)=>{ if(isPerc(p.type)) return; const sub=[];
+      partEvents(p).ev.forEach(e=>{ const s=Math.max(e.s,a), e1=Math.min(e.s+e.l,b); if(e1>s+1e-9) sub.push({n:e.n,s:s-a,l:e1-s}); });
+      parts.push({pi,ev:sub}); });
+    CLIP={len:b-a,parts}; }
+  else if(SELN){ const p=S.parts[SELN.pi], t=p&&partEvents(p).ev.find(o=>Math.abs(o.s-SELN.s)<1e-6&&o.n===SELN.n); if(!t) return false;
+    CLIP={len:t.l,parts:[{pi:SELN.pi,ev:[{n:t.n,s:0,l:t.l}]}]}; }
+  else return false;
+  updClip(); status('Copié. Clique où coller (zone vide de la partition), puis Ctrl+V.'); return true; }
+function pasteClip(insert){ if(!CLIP) return; const at=pasteAt(), len=CLIP.len, single=CLIP.parts.length===1, tg=new Map(); snap();
+  CLIP.parts.forEach(cp=>{ const pi=single?S.sel:cp.pi, p=S.parts[pi]; if(p&&!isPerc(p.type)) tg.set(pi,cp.ev); });
+  if(!tg.size){ UNDO.pop(); updUndo(); status('Choisis une piste mélodique (pas une percussion) pour coller.'); return; }
+  S.parts.forEach((p,pi)=>{ if(isPerc(p.type)) return; let {ev,L}=partEvents(p); const add=tg.get(pi);
+    if(insert&&at<L-1e-9){ ev=insEv(ev,at,len); L+=len; }
+    if(!add&&!insert) return;
+    if(add){ if(!insert) ev=cutEv(ev,at,at+len,false); add.forEach(e=>ev.push({n:e.n,s:e.s+at,l:e.l})); L=Math.max(L,at+len); }
+    writeEvents(p,ev,L); });
+  RANGE=null; showRange(); SELN=null; CUR=at+len; dirty(); renderParts(); updClip();
+  status((insert?'Inséré':'Collé')+' '+posTxt(at)+'. Ctrl+V à nouveau pour enchaîner juste après.'); }
+function dupSel(){ if(!RANGE) return; const b=RANGE.b; copySel(); RANGE=null; showRange(); CUR=b; pasteClip(true); }
+function partLen(d){ const p=curPart(); if(!p||isPerc(p.type)) return; snap(); let {ev,L}=partEvents(p); L=Math.ceil(L/8-1e-9)*8;
+  if(d>0) L+=8; else { if(L<=8){ UNDO.pop(); updUndo(); status('La piste fait déjà une seule mesure.'); return; } L-=8; ev=cutEv(ev,L,1e9,false); }
+  writeEvents(p,ev,L); dirty(); renderParts(); status(`Piste ${S.sel+1} : ${fx(L/8)} mesure${L>8?'s':''}. ↶ pour annuler.`); }
+$('bRCopy').onclick=copySel; $('bRDup').onclick=dupSel; $('bPaste').onclick=()=>pasteClip(false); $('bPasteIns').onclick=()=>pasteClip(true);
+$('bClipX').onclick=()=>{ CLIP=null; updClip(); };
+$('bLp').onclick=()=>partLen(1); $('bLm').onclick=()=>partLen(-1);
+/* zoom et hauteur de la partition */
+const VIEW={zx:1,h:260}, ZL=[1,1.5,2,3,4,6,8];
+try{ Object.assign(VIEW,JSON.parse(localStorage.getItem('synthe_vue')||'{}')); }catch(e){}
+function applyView(keep){ const wr=$('rollWrap'), c=roll, old=c.clientWidth||1, mid=wr.scrollLeft+wr.clientWidth/2;
+  VIEW.h=Math.max(160,Math.min(900,Math.round(VIEW.h))); VIEW.zx=ZL.includes(VIEW.zx)?VIEW.zx:1; RV.H=VIEW.h;
+  c.style.height=VIEW.h+'px'; c.style.width=VIEW.zx>1?Math.round(wr.clientWidth*VIEW.zx)+'px':'100%';
+  if(keep) wr.scrollLeft=mid*(c.clientWidth/old)-wr.clientWidth/2;
+  $('zoomV').textContent='×'+VIEW.zx; try{ localStorage.setItem('synthe_vue',JSON.stringify(VIEW)); }catch(e){} }
+function zoom(d){ const i=ZL.indexOf(VIEW.zx); VIEW.zx=ZL[Math.max(0,Math.min(ZL.length-1,i+d))]; applyView(true); }
+$('bZin').onclick=()=>zoom(1); $('bZout').onclick=()=>zoom(-1);
+$('bHin').onclick=()=>{ VIEW.h+=100; applyView(); }; $('bHout').onclick=()=>{ VIEW.h-=100; applyView(); };
+roll.addEventListener('wheel',e=>{ if(!e.ctrlKey) return; e.preventDefault(); zoom(e.deltaY<0?1:-1); },{passive:false});
+{ const gr=$('rollGrip'); let g0=null;
+  gr.addEventListener('pointerdown',e=>{ e.preventDefault(); g0={y:e.clientY,h:VIEW.h}; try{ gr.setPointerCapture(e.pointerId); }catch(_){} });
+  gr.addEventListener('pointermove',e=>{ if(!g0) return; VIEW.h=g0.h+e.clientY-g0.y; applyView(); });
+  const end=()=>{ g0=null; }; gr.addEventListener('pointerup',end); gr.addEventListener('pointercancel',end); }
+window.addEventListener('resize',()=>applyView());
+applyView();
 function nudge(ds,dm,dl,del){ const p=S.parts[SELN.pi]; if(!p){ SELN=null; return; }
   const {ev,L}=partEvents(p), t=ev.find(o=>Math.abs(o.s-SELN.s)<1e-6&&o.n===SELN.n); if(!t){ SELN=null; return; }
   snap(); const q=+$('quant').value;
@@ -688,7 +766,7 @@ function undo(){ if(!UNDO.length) return; S=JSON.parse(UNDO.pop()); SELN=null; r
 function readSongs(){ try{ return JSON.parse(localStorage.getItem(SONGS)||'{}')||{}; }catch(e){ return {}; } }
 function writeSongs(o){ try{ localStorage.setItem(SONGS,JSON.stringify(o)); return true; }catch(e){ return false; } }
 function emptyDrums(){ const r={}; DRUMS.forEach(d=>r[d.type]={vol:DEMO.drums.rows[d.type].vol,on:[]}); return {steps:16,rows:r}; }
-function refreshAll(){ stopPlay(); RANGE=null; showRange(); $('bpm').value=S.bpm; $('bpmV').textContent=S.bpm; $('name').value=S.name||''; renderParts(); renderDrums(); syncCur(); dirty(); renderSongList(); }
+function refreshAll(){ stopPlay(); RANGE=null; CUR=null; showRange(); $('bpm').value=S.bpm; $('bpmV').textContent=S.bpm; $('name').value=S.name||''; renderParts(); renderDrums(); syncCur(); dirty(); renderSongList(); }
 function renderSongList(){ const songs=readSongs(), names=Object.keys(songs).sort((a,b)=>a.localeCompare(b,'fr'));
   $('preset').innerHTML='<option value="">—</option>'+(names.length?'<optgroup label="Mes morceaux">'+names.map(n=>`<option value="m:${esc(n)}">${esc(n)}</option>`).join('')+'</optgroup>':'')
     +'<optgroup label="Exemples"><option value="demo">Démo piano + guitare</option>'+Object.keys(GAME).map(k=>`<option value="g:${k}">Musique du jeu : ${k}</option>`).join('')+'</optgroup>';
