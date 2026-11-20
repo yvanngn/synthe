@@ -155,9 +155,9 @@ pre{margin:0;font-family:var(--f-code);font-size:12.5px;line-height:1.55;color:v
   <div class="grid2">
     <div class="col">
       <div class="box">
-        <div class="bar" style="justify-content:space-between"><span class="lbl">Pistes</span><button class="btn ghost" id="bAddPart">+ Piste</button></div>
+        <div class="bar" style="justify-content:space-between"><span class="lbl">Pistes</span><span class="bar"><button class="btn ghost" id="bGroup" title="Fusionne toutes les pistes qui ont le même instrument">Regrouper par instrument</button><button class="btn ghost" id="bAddPart">+ Piste</button></span></div>
         <div id="parts" class="col" style="gap:8px"></div>
-        <p class="how">Notation du jeu : <code>C4:2</code> = do4 pendant 2 croches, <code>-:4</code> = silence de 4 croches, <code>.5</code> = double croche. Tu peux corriger le texte à la main.</p>
+        <p class="how">Notation du jeu : <code>C4:2</code> = do4 pendant 2 croches, <code>-:4</code> = silence de 4 croches, <code>.5</code> = double croche. Tu peux corriger le texte à la main. Une piste peut jouer des accords : ses voix sont séparées par <code>|</code>.</p>
       </div>
       <div class="box">
         <div class="bar" style="justify-content:space-between"><span class="lbl">Rythme (doubles croches)</span>
@@ -353,9 +353,8 @@ let mode='live', oct=4, stepDur=2, tab='music';
 let COMP=null;
 function compile(){
   const list=[];
-  S.parts.forEach((p,i)=>{ const {notes}=parseText(p.text); if(!notes.length) return;
-    let u=0; const ev=notes.map(([n,l])=>{ const e={n,l,s:u}; u+=l; return e; });
-    list.push({src:'part',idx:i,type:p.type,vol:p.vol,len:p.len,mute:p.mute,ev,L:u}); });
+  S.parts.forEach((p,i)=>{ const {ev,L}=partEvents(p); if(!L) return;
+    list.push({src:'part',idx:i,type:p.type,vol:p.vol,len:p.len,mute:p.mute,ev,L}); });
   DRUMS.forEach(d=>{ const r=S.drums.rows[d.type]; if(!r.on.length) return;
     list.push({src:'drum',type:d.type,vol:r.vol,len:1,ev:r.on.slice().sort((a,b)=>a-b).map(k=>({n:d.note,l:.5,s:k*.5})),L:S.drums.steps*.5}); });
   COMP=list; return list; }
@@ -394,13 +393,9 @@ function stopRec(){
   const ns=REC.notes.filter(n=>n.e!=null).map(n=>{ const s=Math.round(n.s/q)*q; return {n:n.n,s,l:Math.max(q,Math.round((n.e-n.s)/q)*q)}; })
     .filter(n=>n.s>=0).sort((a,b)=>a.s-b.s||nMidi(b.n)-nMidi(a.n));
   if(!ns.length){ status('Rien d’enregistré sur le clavier.'); dirty(); renderDrums(); return; }
-  const voices=[];
-  ns.forEach(n=>{ let v=voices.find(v=>v.end<=n.s); if(!v){ v={end:0,ns:[]}; voices.push(v); } v.ns.push(n); v.end=n.s+n.l; });
-  const total=Math.max(8,Math.ceil(Math.max(...voices.map(v=>v.end))/8)*8);
-  const txt=v=>{ let c=0; const o=[]; v.ns.forEach(n=>{ if(n.s>c) o.push('-:'+fx(n.s-c)); o.push(n.n+':'+fx(n.l)); c=n.s+n.l; }); if(total>c) o.push('-:'+fx(total-c)); return o.join(' '); };
-  const base=S.parts[S.sel]; base.text=txt(voices[0]);
-  voices.slice(1).forEach((v,i)=>S.parts.splice(S.sel+1+i,0,{type:base.type,vol:base.vol,len:base.len,mute:false,text:txt(v)}));
-  status(`${ns.length} notes enregistrées sur ${total/8} mesure(s)`+(voices.length>1?`, accords répartis sur ${voices.length} pistes.`:'.'));
+  const base=S.parts[S.sel], total=Math.max(8,Math.ceil(Math.max(...ns.map(n=>n.s+n.l))/8)*8);
+  writeEvents(base,ns.map(n=>({...n})),total); const nv=base.text.split('|').length;
+  status(`${ns.length} notes enregistrées sur ${total/8} mesure(s)`+(nv>1?`, avec des accords (${nv} voix sur la même piste).`:'.'));
   renderParts(); renderDrums(); dirty();
 }
 
@@ -413,7 +408,7 @@ function noteOn(m,vel){
   const p=curPart(); if(!p) return; const n=mName(m); if(!/^[A-G]#?\d$/.test(n)) return;
   const now=AC.ctx.currentTime, vg=AC.ctx.createGain(); vg.gain.value=vel==null?1:.3+.7*vel; vg.connect(AC.bus);
   if(mode==='step'){ play1(p.type,freq(n),now,Math.max(.08,stepDur*E()*p.len),p.vol,vg); held[m]={vg};
-    snap(); p.text=(p.text.trim()+' '+n+':'+fx(stepDur)).trim(); renderParts(); dirty(); }
+    snap(); stepAppend(p,n+':'+fx(stepDur)); renderParts(); dirty(); }
   else { play1(p.type,freq(n),now,PERC.includes(p.type)?1:3.5,p.vol,vg); held[m]={vg};
     if(REC.on){ const r={n,s:recUnits(),e:null}; REC.notes.push(r); REC.open[m]=r; } }
   keyEl(m,true); status(n+' · '+TY[p.type].label);
@@ -524,12 +519,12 @@ function typeOptions(sel){ return TYPES.map(([id,l])=>`<option value="${id}"${id
 function renderParts(){
   const box=$('parts'); box.innerHTML='';
   S.parts.forEach((p,i)=>{
-    const {notes,bad}=parseText(p.text), L=notes.reduce((a,n)=>a+n[1],0);
+    const V=String(p.text||'').split('|').map(v=>parseText(v)), bad=V.flatMap(v=>v.bad), {ev:notes,L}=partEvents(p);
     const el=document.createElement('div'); el.className='part'+(i===S.sel?' sel':''); el.style.setProperty('--pc',TY[p.type].col);
     el.innerHTML=`<button class="dot" title="Choisir cette piste pour le clavier" aria-label="Choisir la piste ${i+1}"></button>
       <select aria-label="Instrument">${typeOptions(p.type)}</select>
-      <span style="font-size:12px;color:var(--muted)">${notes.length} notes · ${fx(L/8)} mesure(s)</span>
-      <span class="bar" style="gap:4px"><button class="ico${p.mute?' on':''}" data-a="mute" title="Couper/rétablir le son">♪</button><button class="ico" data-a="clr" title="Vider la piste">⌫</button><button class="ico" data-a="del" title="Supprimer la piste">✕</button></span>
+      <span style="font-size:12px;color:var(--muted)">${notes.length} notes · ${fx(L/8)} mesure(s)${V.length>1?' · accords ('+V.length+' voix)':''}</span>
+      <span class="bar" style="gap:4px"><button class="ico" data-a="merge" title="Fusionner avec la piste du dessus"${i?'':' disabled'}>⤒</button><button class="ico${p.mute?' on':''}" data-a="mute" title="Couper/rétablir le son">♪</button><button class="ico" data-a="clr" title="Vider la piste">⌫</button><button class="ico" data-a="del" title="Supprimer la piste">✕</button></span>
       <input type="text" class="notes${bad.length?' bad':''}" spellcheck="false" aria-label="Notes de la piste ${i+1}" id="pt${i}">
       ${bad.length?`<span class="err">À corriger : ${bad.slice(0,4).join(' ')}${bad.length>4?'…':''}</span>`:''}
       <div class="row2"><label class="ctl">Volume <input type="range" min=".005" max=".7" step=".005" data-k="vol"><b></b></label>
@@ -539,6 +534,7 @@ function renderParts(){
     const ti=el.querySelector('.notes'); ti.value=p.text; ti.oninput=()=>{ snapOnce(ti); p.text=ti.value; dirty(); }; ti.onchange=()=>renderParts();
     el.querySelectorAll('input[type=range]').forEach(r=>{ const k=r.dataset.k, b=r.nextElementSibling; r.value=p[k]; b.textContent=fx(p[k]);
       r.oninput=()=>{ snapOnce(r); p[k]=+r.value; b.textContent=fx(p[k]); dirty(); }; });
+    el.querySelector('[data-a=merge]').onclick=()=>{ if(!i) return; snap(); mergeParts(i-1,[i]); S.sel=i-1; renderParts(); syncCur(); dirty(); status(`Piste ${i+1} fusionnée dans la piste ${i}. ↶ pour annuler.`); };
     el.querySelector('[data-a=mute]').onclick=()=>{ snap(); p.mute=!p.mute; renderParts(); dirty(); };
     el.querySelector('[data-a=clr]').onclick=()=>{ snap(); p.text=''; renderParts(); dirty(); };
     el.querySelector('[data-a=del]').onclick=()=>{ snap(); S.parts.splice(i,1); if(!S.parts.length) S.parts.push(newPart('piano')); S.sel=Math.min(S.sel,S.parts.length-1); renderParts(); syncCur(); dirty(); };
@@ -546,6 +542,10 @@ function renderParts(){
   });
 }
 function newPart(t){ const y=TY[t]; return {type:y.id,vol:y.vol,len:y.len,mute:false,text:''}; }
+$('bGroup').onclick=()=>{ const cnt={}; S.parts.forEach(p=>cnt[p.type]=(cnt[p.type]||0)+1); const ks=Object.keys(cnt).filter(t=>cnt[t]>1);
+  if(!ks.length){ status('Chaque instrument a déjà une seule piste.'); return; } snap(); const before=S.parts.length;
+  ks.forEach(t=>{ const idx=S.parts.map((p,i)=>p.type===t?i:-1).filter(i=>i>=0); mergeParts(idx[0],idx.slice(1)); });
+  S.sel=Math.min(S.sel,S.parts.length-1); renderParts(); syncCur(); dirty(); status(`${before} pistes regroupées en ${S.parts.length}. ↶ pour annuler.`); };
 $('bAddPart').onclick=()=>{ snap(); S.parts.push(newPart(curPart()?curPart().type:'piano')); S.sel=S.parts.length-1; renderParts(); syncCur(); dirty(); };
 $('curInstr').innerHTML=typeOptions('piano');
 function syncCur(){ $('curInstr').value=curPart().type; }
@@ -557,8 +557,8 @@ function renderDur(){ $('durSeg').innerHTML=DURS.map(([v,l])=>`<button data-d="$
   $('durSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{ stepDur=+b.dataset.d; renderDur(); }); }
 $('modeSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{ mode=b.dataset.m; $('modeSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b)); $('stepBar').hidden=mode!=='step';
   status(mode==='step'?'Chaque touche ajoute une note de la durée choisie à la fin de la piste sélectionnée.':''); });
-$('bRest').onclick=()=>{ snap(); const p=curPart(); p.text=(p.text.trim()+' -:'+fx(stepDur)).trim(); renderParts(); dirty(); };
-$('bBack').onclick=()=>{ snap(); const p=curPart(); p.text=p.text.trim().split(/\s+/).slice(0,-1).join(' '); renderParts(); dirty(); };
+$('bRest').onclick=()=>{ snap(); const p=curPart(); stepAppend(p,'-:'+fx(stepDur)); renderParts(); dirty(); };
+$('bBack').onclick=()=>{ snap(); const p=curPart(); stepBack(p); renderParts(); dirty(); };
 
 /* =========== rythme =========== */
 function renderDrums(){
@@ -589,15 +589,29 @@ function rollGeom(){ RV.W=$('roll').clientWidth||600;
     if(lo>hi){ lo=55; hi=72; } lo-=3; hi+=3; if(hi-lo<16){ const c=(lo+hi)>>1; lo=c-8; hi=c+8; } RV.lo=lo; RV.hi=hi; }
   RV.mh=(RV.H-RV.drumH-14)/(RV.hi-RV.lo+1); }
 const rX=u=>u/RV.maxL*(RV.W-4)+2, rY=m=>(RV.hi-m)*RV.mh+2, rU=x=>(x-2)/(RV.W-4)*RV.maxL, rM=y=>RV.hi-Math.floor((y-2)/RV.mh);
-function partEvents(p){ const {notes}=parseText(p.text); let u=0; const ev=[]; notes.forEach(([n,l])=>{ if(n!=='-') ev.push({n,s:u,l}); u+=l; }); return {ev,L:u}; }
-function writeEvents(p,ev,L){ // une piste = une voix : on résout les chevauchements
-  ev=ev.filter(e=>e.l>0);
-  for(let pass=0;pass<ev.length+1;pass++){ ev.sort((a,b)=>a.s-b.s); let ok=true;
-    for(let i=1;i<ev.length;i++){ const a=ev[i-1], b=ev[i]; if(b.s<a.s+a.l-1e-9){ ok=false; if(b.s>a.s) a.l=b.s-a.s; else b.s=a.s+a.l; } }
-    if(ok) break; }
-  const end=ev.reduce((m,e)=>Math.max(m,e.s+e.l),0); L=Math.max(L,Math.ceil(end/8)*8);
-  let c=0; const o=[]; ev.forEach(e=>{ if(e.s>c+1e-9) o.push('-:'+fx(e.s-c)); o.push(e.n+':'+fx(e.l)); c=e.s+e.l; }); if(L>c+1e-9) o.push('-:'+fx(L-c));
-  p.text=o.join(' '); }
+function partEvents(p){ const ev=[]; let L=0; // toutes les voix de la piste (séparées par « | »)
+  String(p.text||'').split('|').forEach(v=>{ const {notes}=parseText(v); let u=0; notes.forEach(([n,l])=>{ if(n!=='-') ev.push({n,s:u,l}); u+=l; }); L=Math.max(L,u); });
+  return {ev,L}; }
+function writeEvents(p,ev,L){ // une piste peut jouer des accords : chaque voix devient une ligne séparée par « | »
+  ev=ev.filter(e=>e.l>1e-9&&e.n&&e.n!=='-');
+  ev.sort((a,b)=>a.n<b.n?-1:a.n>b.n?1:a.s-b.s); const keep=[];
+  ev.forEach(e=>{ const a=keep[keep.length-1]; // même note qui se chevauche : on raccourcit la première
+    if(a&&a.n===e.n&&e.s<a.s+a.l-1e-9){ if(e.s>a.s+1e-9) a.l=e.s-a.s; else { a.l=Math.max(a.l,e.l); return; } } keep.push(e); });
+  keep.sort((a,b)=>a.s-b.s||nMidi(b.n)-nMidi(a.n));
+  const end=keep.reduce((m,e)=>Math.max(m,e.s+e.l),0); L=Math.max(L,Math.ceil(end/8-1e-9)*8);
+  const voices=[]; keep.forEach(e=>{ let v=voices.find(v=>v.end<=e.s+1e-9); if(!v){ v={end:0,ns:[]}; voices.push(v); } v.ns.push(e); v.end=e.s+e.l; });
+  if(!voices.length) voices.push({end:0,ns:[]});
+  p.text=voices.map(v=>{ let c=0; const o=[]; v.ns.forEach(e=>{ if(e.s>c+1e-9) o.push('-:'+fx(e.s-c)); o.push(e.n+':'+fx(e.l)); c=e.s+e.l; }); if(L>c+1e-9) o.push('-:'+fx(L-c)); return o.join(' '); })
+    .filter((t,i)=>t||i===0).join(' | '); }
+function voicesOf(p){ return String(p.text||'').split('|').map(v=>v.trim()); }
+function stepAppend(p,tok){ const V=voicesOf(p); if(V.length<2){ p.text=(String(p.text||'').trim()+' '+tok).trim(); return; }
+  const d=tok.split(':')[1]; p.text=V.map((v,i)=>(v+' '+(i?'-:'+d:tok)).trim()).join(' | '); }
+function stepBack(p){ p.text=voicesOf(p).map(v=>v.split(/\s+/).filter(Boolean).slice(0,-1).join(' ')).join(' | ').replace(/^( \| )+|( \| )+$/g,''); }
+function mergeParts(into,idxs){ // les boucles plus courtes sont répétées jusqu'à la longueur de la plus longue
+  const all=[into,...idxs], T=Math.max(...all.map(k=>partEvents(S.parts[k]).L)), ev=[];
+  all.forEach(k=>{ const {ev:e,L}=partEvents(S.parts[k]); if(!L) return;
+    for(let o=0;o<T-1e-9;o+=L) e.forEach(x=>{ if(x.s+o<T-1e-9) ev.push({n:x.n,s:x.s+o,l:Math.min(x.l,T-x.s-o)}); }); });
+  writeEvents(S.parts[into],ev,T); idxs.slice().sort((a,b)=>b-a).forEach(k=>S.parts.splice(k,1)); }
 function applyEvents(pi,ev,L,t){ writeEvents(S.parts[pi],ev,L); SELN=t?{pi,s:t.s,n:t.n}:null; dirty(); }
 function previewNote(p,n){ initAudio(); if(AC.ctx&&p) play1(p.type,freq(n),AC.ctx.currentTime,.25,p.vol,AC.bus); }
 function drawRoll(){
@@ -751,7 +765,8 @@ function usedNew(){ return [...new Set((COMP||[]).filter(p=>!p.mute).map(p=>p.ty
 function drumText(p){ let c=0; const o=[]; p.ev.forEach(e=>{ if(e.s>c) o.push('-:'+fx(e.s-c)); o.push(e.n+':.5'); c=e.s+.5; }); if(p.L>c) o.push('-:'+fx(p.L-c)); return o.join(' '); }
 function musicCode(){
   const ps=(COMP||[]).filter(p=>!p.mute);
-  const lines=ps.map(p=>`    {type:'${p.type}',vol:${fx(p.vol)},len:${fx(p.len)},notes:parseNotes("${p.src==='drum'?drumText(p):S.parts[p.idx].text.trim().replace(/\s+/g,' ')}")}`);
+  const line=(p,tx)=>`    {type:'${p.type}',vol:${fx(p.vol)},len:${fx(p.len)},notes:parseNotes("${tx}")}`; // une ligne par voix : le jeu joue une note à la fois par partie
+  const lines=ps.flatMap(p=>p.src==='drum'?[line(p,drumText(p))]:S.parts[p.idx].text.split('|').map(v=>v.trim().replace(/\s+/g,' ')).filter(v=>/[A-G]/.test(v)).map(v=>line(p,v)));
   return `  ${nameOf()}:{bpm:${S.bpm},parts:[\n${lines.join(',\n')}]},`;
 }
 function sfxCode(){
